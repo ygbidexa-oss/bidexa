@@ -1,5 +1,5 @@
 'use client'
-import { useState, FormEvent } from 'react'
+import { useState, FormEvent, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useSupabaseAuth'
@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { Eye, EyeOff, AlertTriangle, ArrowRight } from 'lucide-react'
 
 export default function LoginPage() {
-  const { login } = useAuth()
+  const { user, login } = useAuth()
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -15,6 +15,22 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [resetSent, setResetSent] = useState(false)
+
+  // Redirection automatique quand l'utilisateur est connecté
+  useEffect(() => {
+    if (user && user.role) {
+      const currentPath = window.location.pathname
+      const targetPath = (user.role === 'super_admin' || user.role === 'billing_admin') 
+        ? '/super-admin' 
+        : '/dashboard'
+      
+      // Ne rediriger que si on est sur /login
+      if (currentPath === '/login') {
+        console.log('Redirecting to', targetPath)
+        window.location.href = targetPath
+      }
+    }
+  }, [user])
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -25,11 +41,10 @@ export default function LoginPage() {
     
     setLoading(false)
 
-    if (result.success) {
-      router.replace('/dashboard')
-    } else {
+    if (!result.success) {
       setError(result.error || 'Erreur de connexion')
     }
+    // La redirection est gérée par le useEffect quand user est mis à jour
   }
 
   async function handleResetPassword() {
