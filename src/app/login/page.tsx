@@ -16,19 +16,14 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [resetSent, setResetSent] = useState(false)
 
-  // Redirection automatique quand l'utilisateur est connecté
+  // Si déjà connecté, rediriger selon le rôle
   useEffect(() => {
-    if (user && user.role) {
-      const currentPath = window.location.pathname
+    if (user && user.role && window.location.pathname === '/login') {
       const targetPath = (user.role === 'super_admin' || user.role === 'billing_admin') 
         ? '/super-admin' 
         : '/dashboard'
-      
-      // Ne rediriger que si on est sur /login
-      if (currentPath === '/login') {
-        console.log('Redirecting to', targetPath)
-        window.location.href = targetPath
-      }
+      console.log('Already logged in, redirecting to', targetPath)
+      window.location.href = targetPath
     }
   }, [user])
 

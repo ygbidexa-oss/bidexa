@@ -164,8 +164,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.user) {
         console.log('Login successful, loading profile...')
         await loadUserProfile(data.user)
-        // Force redirect after successful login
-        window.location.href = '/dashboard'
+        // Redirection basée sur le rôle
+        const userRole = data.user.user_metadata?.role || 'admin'
+        console.log('User role from metadata:', userRole)
+        if (userRole === 'super_admin' || userRole === 'billing_admin') {
+          window.location.href = '/super-admin'
+        } else {
+          window.location.href = '/dashboard'
+        }
       }
 
       return { success: true }
