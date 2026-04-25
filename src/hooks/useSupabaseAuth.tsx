@@ -147,16 +147,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log('Login successful for:', data.user.email)
         console.log('User metadata:', data.user.user_metadata)
         
-        // Essayer de charger le profil
+        // Essayer de charger le profil avec timeout
         let userRole = data.user.user_metadata?.role
         
         if (!userRole) {
-          // Si pas dans metadata, charger depuis la DB
+          // Si pas dans metadata, charger depuis la DB avec timeout
           console.log('Loading profile from DB...')
-          const userData = await loadUserProfile(data.user)
-          if (userData) {
-            userRole = userData.role
-            console.log('Role from DB:', userRole)
+          try {
+            const userData = await Promise.race([
+              loadUserProfile(data.user),
+              new Promise<null>((_, reject) => 
+                setTimeout(() => reject(new Error('Timeout')), 5000)
+              )
+            ])
+            if (userData) {
+              userRole = userData.role
+              console.log('Role from DB:', userRole)
+            }
+          } catch (timeoutErr) {
+            console.log('Profile loading timeout, using fallback')
           }
         }
         
