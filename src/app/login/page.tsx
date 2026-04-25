@@ -31,7 +31,9 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
+      console.log('Submitting login form...')
       const result = await login(email, password)
+      console.log('Login result:', result)
       
       if (result.success && result.role) {
         console.log('Login successful, role:', result.role)
@@ -42,7 +44,12 @@ export default function LoginPage() {
         console.log('Redirecting to', targetPath)
         window.location.href = targetPath
       } else if (!result.success) {
+        console.log('Login failed:', result.error)
         setError(result.error || 'Erreur de connexion')
+        setLoading(false)
+      } else {
+        console.log('Login success but no role')
+        setError('Erreur: rôle non déterminé')
         setLoading(false)
       }
     } catch (err: any) {

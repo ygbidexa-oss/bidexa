@@ -145,19 +145,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (data.user) {
         console.log('Login successful for:', data.user.email)
+        console.log('User metadata:', data.user.user_metadata)
         
-        // Charger le profil et obtenir le rôle
-        const userData = await loadUserProfile(data.user)
+        // Essayer de charger le profil
+        let userRole = data.user.user_metadata?.role
         
-        if (userData) {
-          console.log('Profile loaded, role:', userData.role)
-          return { success: true, role: userData.role }
-        } else {
-          // Si le profil n'est pas chargé, utiliser les métadonnées
-          const fallbackRole = data.user.user_metadata?.role || 'admin'
-          console.log('Using fallback role:', fallbackRole)
-          return { success: true, role: fallbackRole }
+        if (!userRole) {
+          // Si pas dans metadata, charger depuis la DB
+          console.log('Loading profile from DB...')
+          const userData = await loadUserProfile(data.user)
+          if (userData) {
+            userRole = userData.role
+            console.log('Role from DB:', userRole)
+          }
         }
+        
+        // Fallback si toujours pas de rôle
+        if (!userRole) {
+          userRole = 'admin'
+          console.log('Using fallback role:', userRole)
+        }
+        
+        console.log('Final role for redirection:', userRole)
+        return { success: true, role: userRole }
       }
 
       return { success: false, error: 'Unknown error' }
