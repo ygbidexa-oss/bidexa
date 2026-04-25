@@ -24,7 +24,7 @@ interface AuthContextType {
   user: StoredUser | null
   session: Session | null
   loading: boolean
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string; role?: string }>
   logout: () => Promise<void>
   register: (data: {
     prenom: string
@@ -48,7 +48,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        // Get current session
         const { data: { session } } = await supabase.auth.getSession()
         setSession(session)
         
@@ -64,7 +63,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     initAuth()
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Auth state changed:', event)
       setSession(session)
@@ -76,37 +74,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     })
 
-    return () => {
-      subscription.unsubscribe()
-    }
+    return () => subscription.unsubscribe()
   }, [])
 
   // Load user profile from database
-  async function loadUserProfile(authUser: User): Promise<void> {
+  async function loadUserProfile(authUser: User): Promise<StoredUser | null> {
     console.log('Loading profile for user:', authUser.id)
     try {
-      // First, get the profile
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', authUser.id)
         .single()
 
-      console.log('Profile query result:', { profile: !!profile, error: profileError?.message })
-
       if (profileError) {
         console.error('Error loading profile:', profileError)
-        return
+        return null
       }
 
       if (!profile) {
         console.error('No profile found for user:', authUser.id)
-        return
+        return null
       }
 
-      console.log('Profile loaded:', profile)
-
-      // Then, get entreprise info if exists
       let entreprise = null
       if (profile.entreprise_id) {
         const { data: entData, error: entError } = await supabase
@@ -115,14 +105,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .eq('id', profile.entreprise_id)
           .single()
         
-        console.log('Entreprise query result:', { entreprise: !!entData, error: entError?.message })
-        
         if (!entError && entData) {
           entreprise = entData
         }
       }
 
-      const userData = {
+      const userData: StoredUser = {
         id: authUser.id,
         email: authUser.email!,
         prenom: profile.prenom,
@@ -136,25 +124,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       console.log('Setting user data:', userData)
       setUser(userData)
-      // Pas de redirection automatique - l'utilisateur cliquera sur le bouton
+      return userData
     } catch (error) {
       console.error('Error in loadUserProfile:', error)
+      return null
     }
   }
 
-  // Login function
-  async function login(email: string, password: string): Promise<{ success: boolean; error?: string }> {
+  // Login function - retourne le rôle pour la redirection
+  async function login(email: string, password: string): Promise<{ success: boolean; error?: string; role?: string }> {
     try {
       console.log('Attempting login for:', email)
-      console.log('Supabase client exists:', !!supabase)
-      console.log('Supabase auth exists:', !!supabase.auth)
       
-      const { data, error } = await supabase.auth.signInWithPassword({ 
-        email, 
-        password 
-      })
-
-      console.log('Login response:', { data: !!data, error: error?.message })
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
       if (error) {
         console.error('Login error:', error)
@@ -162,19 +144,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data.user) {
-        console.log('Login successful, loading profile...')
-        await loadUserProfile(data.user)
-        // Redirection basée sur le rôle
-        const userRole = data.user.user_metadata?.role || 'admin'
-        console.log('User role from metadata:', userRole)
-        if (userRole === 'super_admin' || userRole === 'billing_admin') {
-          window.location.href = '/super-admin'
+        console.log('Login successful for:', data.user.email)
+        
+        // Charger le profil et obtenir le rôle
+        const userData = await loadUserProfile(data.user)
+        
+        if (userData) {
+          console.log('Profile loaded, role:', userData.role)
+          return { success: true, role: userData.role }
         } else {
-          window.location.href = '/dashboard'
+          // Si le profil n'est pas chargé, utiliser les métadonnées
+          const fallbackRole = data.user.user_metadata?.role || 'admin'
+          console.log('Using fallback role:', fallbackRole)
+          return { success: true, role: fallbackRole }
         }
       }
 
-      return { success: true }
+      return { success: false, error: 'Unknown error' }
     } catch (error: any) {
       console.error('Login exception:', error)
       return { success: false, error: error.message || 'Login failed' }
@@ -183,9 +169,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Logout function
   async function logout(): Promise<void> {
-    await supabase.auth.signOut()
-    setUser(null)
-    setSession(null)
+    try {
+      await supabase.auth.signOut()
+      setUser(null)
+      setSession(null)
+      // Redirection vers login
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login'
+      }
+    } catch (error) {
+      console.error('Logout error:', error)
+      // Force redirect même en cas d'erreur
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login'
+      }
+    }
   }
 
   // Register function
@@ -198,7 +196,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     forfait: 'starter' | 'pro' | 'enterprise'
   }): Promise<{ success: boolean; error?: string }> {
     try {
-      // Step 1: Get forfait config
       const { data: forfaitConfig, error: forfaitError } = await supabase
         .from('abonnements_config')
         .select('*')
@@ -209,7 +206,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: 'Invalid subscription plan' }
       }
 
-      // Step 2: Create auth user
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
@@ -230,7 +226,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: 'User creation failed' }
       }
 
-      // Step 3: Create entreprise
       const dateRenouvellement = new Date()
       dateRenouvellement.setMonth(dateRenouvellement.getMonth() + 1)
 
@@ -251,10 +246,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (entError) {
         console.error('Error creating entreprise:', entError)
-        // Don't fail - user can update later
       }
 
-      // Step 4: Update profile with entreprise
       if (entreprise) {
         const { error: profileError } = await supabase
           .from('profiles')

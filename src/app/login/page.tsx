@@ -1,14 +1,12 @@
 'use client'
 import { useState, FormEvent, useEffect } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useSupabaseAuth'
 import { supabase } from '@/lib/supabase'
 import { Eye, EyeOff, AlertTriangle, ArrowRight } from 'lucide-react'
 
 export default function LoginPage() {
   const { user, login } = useAuth()
-  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
@@ -16,9 +14,9 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [resetSent, setResetSent] = useState(false)
 
-  // Si déjà connecté, rediriger selon le rôle
+  // Si déjà connecté, rediriger
   useEffect(() => {
-    if (user && user.role && window.location.pathname === '/login') {
+    if (user?.role && window.location.pathname === '/login') {
       const targetPath = (user.role === 'super_admin' || user.role === 'billing_admin') 
         ? '/super-admin' 
         : '/dashboard'
@@ -32,14 +30,26 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
 
-    const result = await login(email, password)
-    
-    setLoading(false)
-
-    if (!result.success) {
-      setError(result.error || 'Erreur de connexion')
+    try {
+      const result = await login(email, password)
+      
+      if (result.success && result.role) {
+        console.log('Login successful, role:', result.role)
+        // Redirection immédiate basée sur le rôle retourné
+        const targetPath = (result.role === 'super_admin' || result.role === 'billing_admin') 
+          ? '/super-admin' 
+          : '/dashboard'
+        console.log('Redirecting to', targetPath)
+        window.location.href = targetPath
+      } else if (!result.success) {
+        setError(result.error || 'Erreur de connexion')
+        setLoading(false)
+      }
+    } catch (err: any) {
+      console.error('Submit error:', err)
+      setError(err.message || 'Erreur de connexion')
+      setLoading(false)
     }
-    // La redirection est gérée par le useEffect quand user est mis à jour
   }
 
   async function handleResetPassword() {
